@@ -176,13 +176,37 @@ jobs:
           
           # Tenter le déploiement avec create-stack d'abord (pour voir l'erreur complète)
           echo "🔍 Vérification si la stack existe..."
-          STACK_EXISTS=$(aws cloudformation describe-stacks \
+          STACK_STATUS=$(aws cloudformation describe-stacks \
             --stack-name ${{ env.STACK_NAME }} \
             --region ${{ env.AWS_REGION }} \
             --query "Stacks[0].StackStatus" \
             --output text 2>/dev/null || echo "NOT_FOUND")
           
-          if [ "$STACK_EXISTS" == "NOT_FOUND" ]; then
+          # Si la stack est en cours de création ou de mise à jour, attendre
+          if [ "$STACK_STATUS" == "CREATE_IN_PROGRESS" ] || [ "$STACK_STATUS" == "UPDATE_IN_PROGRESS" ] || [ "$STACK_STATUS" == "UPDATE_ROLLBACK_IN_PROGRESS" ]; then
+            echo "⏳ Stack en cours de traitement ($STACK_STATUS), attente de la fin..."
+            if [ "$STACK_STATUS" == "CREATE_IN_PROGRESS" ]; then
+              echo "⏳ Attente de la fin de la création (cela peut prendre 10-15 minutes)..."
+              aws cloudformation wait stack-create-complete \
+                --stack-name ${{ env.STACK_NAME }} \
+                --region ${{ env.AWS_REGION }} || true
+            elif [ "$STACK_STATUS" == "UPDATE_IN_PROGRESS" ]; then
+              echo "⏳ Attente de la fin de la mise à jour..."
+              aws cloudformation wait stack-update-complete \
+                --stack-name ${{ env.STACK_NAME }} \
+                --region ${{ env.AWS_REGION }} || true
+            fi
+            # Re-vérifier le statut après l'attente
+            STACK_STATUS=$(aws cloudformation describe-stacks \
+              --stack-name ${{ env.STACK_NAME }} \
+              --region ${{ env.AWS_REGION }} \
+              --query "Stacks[0].StackStatus" \
+              --output text 2>/dev/null || echo "NOT_FOUND")
+            echo "📊 Statut après attente: $STACK_STATUS"
+            echo ""
+          fi
+          
+          if [ "$STACK_STATUS" == "NOT_FOUND" ]; then
             echo "📦 Création de la stack (première fois)..."
             # Utiliser create-stack pour voir l'erreur complète
             if ! aws cloudformation create-stack \
@@ -270,8 +294,9 @@ jobs:
             fi
             
             echo "✅ Stack créée avec succès"
-          else
+          elif [ "$STACK_STATUS" != "NOT_FOUND" ]; then
             echo "🔄 Mise à jour de la stack existante..."
+            echo "📊 Statut actuel: $STACK_STATUS"
             # Utiliser deploy pour la mise à jour
             if ! aws cloudformation deploy \
               --template-file infrastructure/infrastructure.yml \
