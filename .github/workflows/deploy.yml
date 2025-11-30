@@ -868,16 +868,51 @@ jobs:
             pkill -f "node server.js" || true
             sleep 2
             
-            # Démarrer la nouvelle instance
-            nohup node server.js > /home/ec2-user/app/app.log 2>&1 &
+            # Charger NVM et démarrer l'application
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            
+            # Vérifier que Node.js est disponible
+            if ! command -v node &> /dev/null; then
+              echo "❌ ERREUR: Node.js n'est pas disponible"
+              echo "Installation de NVM..."
+              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+              export NVM_DIR="$HOME/.nvm"
+              [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+              nvm install 16
+              nvm use 16
+            fi
+            
+            echo "Node.js version: $(node --version)"
+            echo "npm version: $(npm --version)"
+            
+            # Vérifier que le fichier .env existe
+            if [ ! -f .env ]; then
+              echo "❌ ERREUR: Fichier .env non trouvé"
+              exit 1
+            fi
+            
+            # Démarrer l'application avec NVM chargé
+            echo "🚀 Démarrage de l'application..."
+            cd /home/ec2-user/app
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            nohup bash -c 'source ~/.nvm/nvm.sh && node server.js' > app.log 2>&1 &
+            APP_PID=$!
             sleep 5
             
             # Vérifier que le processus tourne
-            if pgrep -f "node server.js" > /dev/null; then
-              echo "✅ Application déployée avec succès"
+            if ps -p $APP_PID > /dev/null 2>&1 || pgrep -f "node server.js" > /dev/null; then
+              echo "✅ Application démarrée (PID: $APP_PID)"
+              echo "Port en écoute:"
+              sudo netstat -tlnp | grep :3000 || echo "Port 3000 pas encore en écoute (peut prendre quelques secondes)"
+              echo ""
+              echo "Dernières lignes des logs:"
+              tail -10 app.log
             else
               echo "❌ Erreur: L'application n'a pas démarré"
-              cat /home/ec2-user/app/app.log
+              echo "Logs complets:"
+              cat app.log
               exit 1
             fi
           EOF
@@ -895,21 +930,59 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          WEBSERVER_IP="${{ needs.deploy-infrastructure.outputs.webserver-ip }}"
+          ssh-keyscan -H $WEBSERVER_IP >> ~/.ssh/known_hosts 2>/dev/null || true
+
       - name: Wait for application to start
         run: |
           echo "⏳ Attente du démarrage de l'application..."
-          sleep 45
+          sleep 30
           
-          # Attendre jusqu'à 2 minutes que l'API réponde
           WEBSERVER_IP="${{ needs.deploy-infrastructure.outputs.webserver-ip }}"
           MAX_ATTEMPTS=24
           ATTEMPT=0
           
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            # Vérifier d'abord si l'application tourne sur le serveur
+            if [ $ATTEMPT -eq 0 ] || [ $((ATTEMPT % 6)) -eq 0 ]; then
+              echo "🔍 Diagnostic du serveur (tentative $((ATTEMPT + 1)))..."
+              ssh -o StrictHostKeyChecking=no \
+                -o ConnectTimeout=10 \
+                -i ~/.ssh/id_rsa \
+                ec2-user@$WEBSERVER_IP << 'DIAG' || true
+                echo "=== État du processus Node.js ==="
+                ps aux | grep -E "node|npm" | grep -v grep || echo "Aucun processus Node.js trouvé"
+                echo ""
+                echo "=== Port 3000 en écoute ==="
+                sudo netstat -tlnp | grep :3000 || echo "Port 3000 n'est pas en écoute"
+                echo ""
+                echo "=== Dernières lignes des logs ==="
+                tail -20 /home/ec2-user/app/app.log 2>/dev/null || echo "Fichier de log non trouvé"
+                echo ""
+                echo "=== Variables d'environnement ==="
+                cat /home/ec2-user/app/.env 2>/dev/null || echo "Fichier .env non trouvé"
+              DIAG
+            fi
+            
+            # Tester la connexion HTTP
             if curl -s -f -m 5 http://$WEBSERVER_IP:3000/health > /dev/null 2>&1; then
               echo "✅ API est disponible"
               break
             fi
+            
             ATTEMPT=$((ATTEMPT + 1))
             echo "⏳ Tentative $ATTEMPT/$MAX_ATTEMPTS..."
             sleep 5
@@ -917,6 +990,30 @@ jobs:
           
           if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
             echo "❌ L'API n'est pas disponible après $MAX_ATTEMPTS tentatives"
+            echo ""
+            echo "🔍 Diagnostic final..."
+            ssh -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=10 \
+              -i ~/.ssh/id_rsa \
+              ec2-user@$WEBSERVER_IP << 'DIAG' || true
+              echo "=== État complet du serveur ==="
+              echo "Processus Node.js:"
+              ps aux | grep -E "node|npm" | grep -v grep || echo "Aucun"
+              echo ""
+              echo "Ports en écoute:"
+              sudo netstat -tlnp | grep -E ":3000|:22" || echo "Aucun port pertinent"
+              echo ""
+              echo "Logs complets de l'application:"
+              cat /home/ec2-user/app/app.log 2>/dev/null || echo "Logs non disponibles"
+              echo ""
+              echo "Test local de l'API:"
+              curl -s http://localhost:3000/health || echo "API non accessible localement"
+            DIAG
+            echo ""
+            echo "💡 Vérifications à faire:"
+            echo "  1. Vérifiez que le Security Group autorise les connexions HTTP (port 3000) depuis 0.0.0.0/0"
+            echo "  2. Vérifiez les logs ci-dessus pour voir les erreurs de l'application"
+            echo "  3. Vérifiez que la base de données est accessible depuis le WebServer"
             exit 1
           fi
 
