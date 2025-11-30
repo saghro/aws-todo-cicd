@@ -962,19 +962,19 @@ jobs:
               ssh -o StrictHostKeyChecking=no \
                 -o ConnectTimeout=10 \
                 -i ~/.ssh/id_rsa \
-                ec2-user@$WEBSERVER_IP << 'DIAG' || true
-                echo "=== État du processus Node.js ==="
-                ps aux | grep -E "node|npm" | grep -v grep || echo "Aucun processus Node.js trouvé"
-                echo ""
-                echo "=== Port 3000 en écoute ==="
-                sudo netstat -tlnp | grep :3000 || echo "Port 3000 n'est pas en écoute"
-                echo ""
-                echo "=== Dernières lignes des logs ==="
-                tail -20 /home/ec2-user/app/app.log 2>/dev/null || echo "Fichier de log non trouvé"
-                echo ""
-                echo "=== Variables d'environnement ==="
-                cat /home/ec2-user/app/.env 2>/dev/null || echo "Fichier .env non trouvé"
-              DIAG
+                ec2-user@$WEBSERVER_IP << 'DIAG_INTERMEDIATE' || true
+echo "=== État du processus Node.js ==="
+ps aux | grep -E "node|npm" | grep -v grep || echo "Aucun processus Node.js trouvé"
+echo ""
+echo "=== Port 3000 en écoute ==="
+sudo netstat -tlnp | grep :3000 || echo "Port 3000 n'est pas en écoute"
+echo ""
+echo "=== Dernières lignes des logs ==="
+tail -20 /home/ec2-user/app/app.log 2>/dev/null || echo "Fichier de log non trouvé"
+echo ""
+echo "=== Variables d'environnement ==="
+cat /home/ec2-user/app/.env 2>/dev/null || echo "Fichier .env non trouvé"
+DIAG_INTERMEDIATE
             fi
             
             # Tester la connexion HTTP
@@ -995,20 +995,20 @@ jobs:
             ssh -o StrictHostKeyChecking=no \
               -o ConnectTimeout=10 \
               -i ~/.ssh/id_rsa \
-              ec2-user@$WEBSERVER_IP << 'DIAG' || true
-              echo "=== État complet du serveur ==="
-              echo "Processus Node.js:"
-              ps aux | grep -E "node|npm" | grep -v grep || echo "Aucun"
-              echo ""
-              echo "Ports en écoute:"
-              sudo netstat -tlnp | grep -E ":3000|:22" || echo "Aucun port pertinent"
-              echo ""
-              echo "Logs complets de l'application:"
-              cat /home/ec2-user/app/app.log 2>/dev/null || echo "Logs non disponibles"
-              echo ""
-              echo "Test local de l'API:"
-              curl -s http://localhost:3000/health || echo "API non accessible localement"
-            DIAG
+              ec2-user@$WEBSERVER_IP << 'DIAG_FINAL' || true
+echo "=== État complet du serveur ==="
+echo "Processus Node.js:"
+ps aux | grep -E "node|npm" | grep -v grep || echo "Aucun"
+echo ""
+echo "Ports en écoute:"
+sudo netstat -tlnp | grep -E ":3000|:22" || echo "Aucun port pertinent"
+echo ""
+echo "Logs complets de l'application:"
+cat /home/ec2-user/app/app.log 2>/dev/null || echo "Logs non disponibles"
+echo ""
+echo "Test local de l'API:"
+curl -s http://localhost:3000/health || echo "API non accessible localement"
+DIAG_FINAL
             echo ""
             echo "💡 Vérifications à faire:"
             echo "  1. Vérifiez que le Security Group autorise les connexions HTTP (port 3000) depuis 0.0.0.0/0"
