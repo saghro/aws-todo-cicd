@@ -353,3 +353,5 @@ juba
 - Express pour le backend
 - PostgreSQL pour la base de données
 
+
+## 🎉 Test du pipeline CI/CD
