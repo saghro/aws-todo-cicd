@@ -446,6 +446,16 @@ jobs:
             exit 1
           fi
           
+          # Afficher des informations de debug (sans exposer la clé complète)
+          echo "🔍 Informations de debug:"
+          KEY_SIZE=$(wc -c < ~/.ssh/id_rsa)
+          KEY_LINES=$(wc -l < ~/.ssh/id_rsa)
+          echo "  Taille du fichier: $KEY_SIZE octets"
+          echo "  Nombre de lignes: $KEY_LINES"
+          echo "  Première ligne: $(head -1 ~/.ssh/id_rsa)"
+          echo "  Dernière ligne: $(tail -1 ~/.ssh/id_rsa)"
+          echo ""
+          
           # Vérifier que la clé est valide avec ssh-keygen
           echo "🔍 Validation de la clé SSH..."
           VALIDATION_OUTPUT=$(ssh-keygen -l -f ~/.ssh/id_rsa 2>&1)
@@ -457,15 +467,33 @@ jobs:
             echo "Détails de l'erreur:"
             echo "$VALIDATION_OUTPUT"
             echo ""
+            echo "📋 Analyse du problème:"
+            if [ $KEY_SIZE -lt 1000 ]; then
+              echo "  ⚠️  La clé semble trop courte ($KEY_SIZE octets). Elle est probablement tronquée."
+            fi
+            if [ $KEY_LINES -lt 10 ]; then
+              echo "  ⚠️  La clé a trop peu de lignes ($KEY_LINES). Les retours à la ligne sont peut-être perdus."
+            fi
+            if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/id_rsa; then
+              echo "  ⚠️  L'en-tête BEGIN est manquant"
+            fi
+            if ! grep -q "END.*PRIVATE KEY" ~/.ssh/id_rsa; then
+              echo "  ⚠️  L'en-tête END est manquant"
+            fi
+            echo ""
             echo "📋 Vérifications à faire:"
             echo "  1. La clé est au format PEM complet"
             echo "  2. Les en-têtes BEGIN et END sont présents"
             echo "  3. Tous les retours à la ligne sont préservés"
             echo "  4. Aucun espace supplémentaire n'a été ajouté"
+            echo "  5. La clé complète a été copiée (pas tronquée)"
             echo ""
-            echo "💡 Pour obtenir le contenu exact de votre clé:"
-            echo "  Exécutez localement: ./scripts/check-ssh-key.sh ~/.ssh/todo-app-key.pem"
-            echo "  Puis copiez-collez TOUT le contenu affiché dans GitHub Secrets"
+            echo "💡 Solution:"
+            echo "  1. Exécutez localement: ./scripts/generate-ssh-secret.sh ~/.ssh/todo-app-key.pem"
+            echo "  2. Ouvrez le fichier github-ssh-secret.txt généré"
+            echo "  3. Copiez TOUT le contenu dans GitHub Secrets (Settings → Secrets → Actions)"
+            echo ""
+            echo "📖 Guide complet: CONFIGURER_SSH_SECRET.md"
             exit 1
           fi
           
@@ -635,6 +663,16 @@ jobs:
             exit 1
           fi
           
+          # Afficher des informations de debug (sans exposer la clé complète)
+          echo "🔍 Informations de debug:"
+          KEY_SIZE=$(wc -c < ~/.ssh/id_rsa)
+          KEY_LINES=$(wc -l < ~/.ssh/id_rsa)
+          echo "  Taille du fichier: $KEY_SIZE octets"
+          echo "  Nombre de lignes: $KEY_LINES"
+          echo "  Première ligne: $(head -1 ~/.ssh/id_rsa)"
+          echo "  Dernière ligne: $(tail -1 ~/.ssh/id_rsa)"
+          echo ""
+          
           # Vérifier que la clé est valide avec ssh-keygen
           echo "🔍 Validation de la clé SSH..."
           VALIDATION_OUTPUT=$(ssh-keygen -l -f ~/.ssh/id_rsa 2>&1)
@@ -646,15 +684,33 @@ jobs:
             echo "Détails de l'erreur:"
             echo "$VALIDATION_OUTPUT"
             echo ""
+            echo "📋 Analyse du problème:"
+            if [ $KEY_SIZE -lt 1000 ]; then
+              echo "  ⚠️  La clé semble trop courte ($KEY_SIZE octets). Elle est probablement tronquée."
+            fi
+            if [ $KEY_LINES -lt 10 ]; then
+              echo "  ⚠️  La clé a trop peu de lignes ($KEY_LINES). Les retours à la ligne sont peut-être perdus."
+            fi
+            if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/id_rsa; then
+              echo "  ⚠️  L'en-tête BEGIN est manquant"
+            fi
+            if ! grep -q "END.*PRIVATE KEY" ~/.ssh/id_rsa; then
+              echo "  ⚠️  L'en-tête END est manquant"
+            fi
+            echo ""
             echo "📋 Vérifications à faire:"
             echo "  1. La clé est au format PEM complet"
             echo "  2. Les en-têtes BEGIN et END sont présents"
             echo "  3. Tous les retours à la ligne sont préservés"
             echo "  4. Aucun espace supplémentaire n'a été ajouté"
+            echo "  5. La clé complète a été copiée (pas tronquée)"
             echo ""
-            echo "💡 Pour obtenir le contenu exact de votre clé:"
-            echo "  Exécutez localement: ./scripts/check-ssh-key.sh ~/.ssh/todo-app-key.pem"
-            echo "  Puis copiez-collez TOUT le contenu affiché dans GitHub Secrets"
+            echo "💡 Solution:"
+            echo "  1. Exécutez localement: ./scripts/generate-ssh-secret.sh ~/.ssh/todo-app-key.pem"
+            echo "  2. Ouvrez le fichier github-ssh-secret.txt généré"
+            echo "  3. Copiez TOUT le contenu dans GitHub Secrets (Settings → Secrets → Actions)"
+            echo ""
+            echo "📖 Guide complet: CONFIGURER_SSH_SECRET.md"
             exit 1
           fi
           
