@@ -1,0 +1,45 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "author": "juba",
+  "description": "Backend API REST pour Todo App - Projet AWS CI/CD",
+  "keywords": [
+    "todo",
+    "api",
+    "express",
+    "postgresql",
+    "aws",
+    "rest"
+  ],
+  "license": "MIT",
+  "main": "server.js",
+  "packages": {},
+  "devDependencies": {
+    "eslint": "^8.52.0",
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.11",
+    "supertest": "^6.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "nodemon server.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "start": "node server.js",
+    "test": "jest --coverage --watchAll=false",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "body-parser": "^2.2.1",
+    "chalk": "^4.1.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "pg": "^8.16.3"
+  }
+}

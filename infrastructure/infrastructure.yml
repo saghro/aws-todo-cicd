@@ -1,0 +1,509 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Infrastructure pour Todo App avec VPC, EC2, CloudWatch et SNS'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: dev
+    Description: Nom de l'environnement (dev, staging, prod)
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Nom de la key pair EC2 existante
+
+  AlertEmail:
+    Type: String
+    Description: Email pour recevoir les alertes SNS
+    AllowedPattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+
+Resources:
+  # ==================== VPC ====================
+  TodoVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-todo-vpc
+
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-igw
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref TodoVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # ==================== SUBNETS ====================
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TodoVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-subnet
+
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TodoVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-subnet
+
+  # ==================== ROUTE TABLES ====================
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref TodoVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-rt
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # Elastic IP pour le NAT Gateway
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachGateway
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-nat-eip
+
+  # NAT Gateway pour permettre l'accès Internet depuis le subnet privé
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-nat-gateway
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref TodoVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-rt
+
+  # Route privée vers le NAT Gateway
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    DependsOn: NatGateway
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ==================== SECURITY GROUPS ====================
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${EnvironmentName}-webserver-sg
+      GroupDescription: Security group for the web server
+      VpcId: !Ref TodoVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3128
+          ToPort: 3128
+          CidrIp: 10.0.2.0/24
+          Description: Squid proxy for database instance
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-webserver-sg
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${EnvironmentName}-database-sg
+      GroupDescription: Security group for the database
+      VpcId: !Ref TodoVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref WebServerSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref WebServerSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-database-sg
+
+  # ==================== IAM ROLES ====================
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-ec2-role
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2Role
+
+  # ==================== EC2 INSTANCES ====================
+  WebServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0156001f0548e90b1  # Amazon Linux 2 (à adapter selon la région)
+      InstanceType: t3.micro
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref WebServerSecurityGroup
+          SubnetId: !Ref PublicSubnet
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y docker git
+          service docker start
+          usermod -a -G docker ec2-user
+          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
+          
+          # Installer Node.js
+          curl -sL https://rpm.nodesource.com/setup_18.x | bash -
+          yum install -y nodejs
+          
+          # Installer CloudWatch Agent
+          wget https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+          rpm -U ./amazon-cloudwatch-agent.rpm
+          
+          # Créer la configuration CloudWatch Agent pour les logs
+          mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
+          cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWAGENTCONFIG'
+          {
+            "logs": {
+              "logs_collected": {
+                "files": {
+                  "collect_list": [
+                    {
+                      "file_path": "/home/ec2-user/app/app.log",
+                      "log_group_name": "/aws/ec2/todo-app/webserver",
+                      "log_stream_name": "{instance_id}",
+                      "timezone": "UTC"
+                    }
+                  ]
+                }
+              }
+            },
+            "metrics": {
+              "namespace": "TodoApp/WebServer",
+              "metrics_collected": {
+                "cpu": {
+                  "measurement": [
+                    {"name": "cpu_usage_idle", "rename": "CPU_USAGE_IDLE", "unit": "Percent"},
+                    {"name": "cpu_usage_iowait", "rename": "CPU_USAGE_IOWAIT", "unit": "Percent"},
+                    {"name": "cpu_usage_user", "rename": "CPU_USAGE_USER", "unit": "Percent"},
+                    {"name": "cpu_usage_system", "rename": "CPU_USAGE_SYSTEM", "unit": "Percent"}
+                  ],
+                  "totalcpu": false,
+                  "resources": ["*"]
+                },
+                "disk": {
+                  "measurement": [
+                    {"name": "used_percent", "rename": "DISK_USED_PERCENT", "unit": "Percent"}
+                  ],
+                  "resources": ["*"]
+                },
+                "mem": {
+                  "measurement": [
+                    {"name": "mem_used_percent", "rename": "MEM_USED_PERCENT", "unit": "Percent"}
+                  ]
+                }
+              }
+            }
+          }
+          CWAGENTCONFIG
+          
+          # Démarrer CloudWatch Agent (sera configuré après le déploiement)
+          # /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-webserver
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  DatabaseInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0156001f0548e90b1  # Amazon Linux 2
+      InstanceType: t3.micro
+      KeyName: !Ref KeyPairName
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: false
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref DatabaseSecurityGroup
+          SubnetId: !Ref PrivateSubnet
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          amazon-linux-extras install postgresql14 -y
+          yum install -y postgresql-server postgresql-contrib
+          postgresql-setup initdb
+          systemctl start postgresql
+          systemctl enable postgresql
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-database
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # ==================== SNS ====================
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${EnvironmentName}-todo-alerts
+      Subscription:
+        - Endpoint: !Ref AlertEmail
+          Protocol: email
+
+  # ==================== CLOUDWATCH ALARMS ====================
+  WebServerCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${EnvironmentName}-webserver-high-cpu
+      AlarmDescription: Alerte si CPU > 80% pendant 5 minutes
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref WebServerInstance
+      AlarmActions:
+        - !Ref AlertTopic
+
+  WebServerStatusCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${EnvironmentName}-webserver-status-check-failed
+      AlarmDescription: Alerte si le status check échoue
+      MetricName: StatusCheckFailed
+      Namespace: AWS/EC2
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref WebServerInstance
+      AlarmActions:
+        - !Ref AlertTopic
+
+  DatabaseCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${EnvironmentName}-database-high-cpu
+      AlarmDescription: Alerte si CPU > 80% pendant 5 minutes
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref DatabaseInstance
+      AlarmActions:
+        - !Ref AlertTopic
+
+  DatabaseStatusCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${EnvironmentName}-database-status-check-failed
+      AlarmDescription: Alerte si le status check échoue
+      MetricName: StatusCheckFailed
+      Namespace: AWS/EC2
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref DatabaseInstance
+      AlarmActions:
+        - !Ref AlertTopic
+
+  # ==================== CLOUDWATCH DASHBOARD ====================
+  TodoAppDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub ${EnvironmentName}-todo-app-dashboard
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/EC2", "CPUUtilization", {"instanceId": "${WebServerInstance}"}],
+                  ["...", {"instanceId": "${DatabaseInstance}"}]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "CPU Utilization (%)"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/EC2", "NetworkIn", {"instanceId": "${WebServerInstance}"}],
+                  ["...", "NetworkOut", {"instanceId": "${WebServerInstance}"}],
+                  ["...", "NetworkIn", {"instanceId": "${DatabaseInstance}"}],
+                  ["...", "NetworkOut", {"instanceId": "${DatabaseInstance}"}]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "Network Traffic (Bytes)"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/EC2", "StatusCheckFailed", {"instanceId": "${WebServerInstance}"}],
+                  ["...", {"instanceId": "${DatabaseInstance}"}]
+                ],
+                "period": 60,
+                "stat": "Maximum",
+                "region": "${AWS::Region}",
+                "title": "Status Check Failed"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  VPCId:
+    Description: ID du VPC
+    Value: !Ref TodoVPC
+    Export:
+      Name: !Sub ${EnvironmentName}-vpc-id
+
+  WebServerPublicIP:
+    Description: IP publique du serveur web
+    Value: !GetAtt WebServerInstance.PublicIp
+    Export:
+      Name: !Sub ${EnvironmentName}-webserver-ip
+
+  WebServerPublicDNS:
+    Description: DNS publique du serveur web
+    Value: !GetAtt WebServerInstance.PublicDnsName
+    Export:
+      Name: !Sub ${EnvironmentName}-webserver-dns
+
+  DatabasePrivateIP:
+    Description: IP privée de la base de données
+    Value: !GetAtt DatabaseInstance.PrivateIp
+    Export:
+      Name: !Sub ${EnvironmentName}-database-ip
+
+  SNSTopicArn:
+    Description: ARN du topic SNS
+    Value: !Ref AlertTopic
+    Export:
+      Name: !Sub ${EnvironmentName}-sns-topic-arn
+
+  CloudWatchDashboardUrl:
+    Description: URL du dashboard CloudWatch
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${EnvironmentName}-todo-app-dashboard
+    Export:
+      Name: !Sub ${EnvironmentName}-cloudwatch-dashboard-url
