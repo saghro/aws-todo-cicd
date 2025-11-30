@@ -235,9 +235,15 @@ Resources:
           curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           chmod +x /usr/local/bin/docker-compose
           
-          # Installer Node.js
-          curl -sL https://rpm.nodesource.com/setup_18.x | bash -
-          yum install -y nodejs
+          # Installer Node.js avec NVM (compatible avec Amazon Linux 2)
+          curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          nvm install 16
+          nvm use 16
+          nvm alias default 16
+          echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.bashrc
+          echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/.bashrc
           
           # Installer CloudWatch Agent
           wget https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm

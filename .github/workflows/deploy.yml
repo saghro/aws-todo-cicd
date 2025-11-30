@@ -836,11 +836,30 @@ jobs:
             tar -xzf /tmp/backend.tar.gz
             rm /tmp/backend.tar.gz
             
-            # Installer Node.js si nécessaire
+            # Installer Node.js avec NVM (plus fiable sur Amazon Linux 2)
             if ! command -v node &> /dev/null; then
-              curl -fsSL https://rpm.nodesource.com/setup_16.x | sudo bash -
-              sudo yum install -y nodejs
+              echo "📦 Installation de NVM et Node.js 16..."
+              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+              export NVM_DIR="$HOME/.nvm"
+              [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+              nvm install 16
+              nvm use 16
+              nvm alias default 16
+              # Ajouter NVM au PATH pour les sessions futures
+              echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.bashrc
+              echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/.bashrc
+              echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/.bash_profile
+            else
+              # Si Node.js est déjà installé, s'assurer que NVM est chargé
+              export NVM_DIR="$HOME/.nvm"
+              [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" || true
             fi
+            
+            # S'assurer que Node.js et npm sont dans le PATH
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            node --version
+            npm --version
             
             # Installer les dépendances
             npm install --production --no-audit
