@@ -147,14 +147,31 @@ jobs:
           # Vérifier que la Key Pair existe AVANT le déploiement
           echo "🔍 Vérification finale de la Key Pair..."
           KEY_PAIR_NAME="${{ secrets.EC2_KEY_PAIR_NAME }}"
+          
+          # Afficher la longueur et les caractères (pour déboguer)
+          echo "Longueur du nom: ${#KEY_PAIR_NAME}"
+          echo "Nom (avec guillemets pour voir les espaces): '$KEY_PAIR_NAME'"
+          echo ""
+          
+          # Lister toutes les Key Pairs disponibles
+          echo "📋 Key Pairs disponibles dans ${{ env.AWS_REGION }}:"
+          aws ec2 describe-key-pairs --region ${{ env.AWS_REGION }} --query "KeyPairs[*].KeyName" --output table
+          echo ""
+          
+          # Vérifier si la Key Pair existe
           if ! aws ec2 describe-key-pairs --key-names "$KEY_PAIR_NAME" --region ${{ env.AWS_REGION }} &> /dev/null; then
             echo "❌ ERREUR CRITIQUE: Key Pair '$KEY_PAIR_NAME' n'existe pas dans ${{ env.AWS_REGION }}"
             echo ""
-            echo "Key Pairs disponibles dans ${{ env.AWS_REGION }}:"
-            aws ec2 describe-key-pairs --region ${{ env.AWS_REGION }} --query "KeyPairs[*].KeyName" --output table
+            echo "💡 Solution: Utilisez une des Key Pairs listées ci-dessus"
+            echo "   Modifiez le secret EC2_KEY_PAIR_NAME dans GitHub avec exactement le nom de la Key Pair"
             exit 1
           fi
+          
+          # Afficher les détails de la Key Pair trouvée
+          KEY_INFO=$(aws ec2 describe-key-pairs --key-names "$KEY_PAIR_NAME" --region ${{ env.AWS_REGION }} --query "KeyPairs[0]" --output json)
           echo "✅ Key Pair vérifiée: $KEY_PAIR_NAME"
+          echo "   Fingerprint: $(echo "$KEY_INFO" | jq -r '.KeyFingerprint')"
+          echo "   Type: $(echo "$KEY_INFO" | jq -r '.KeyType')"
           echo ""
           
           # Tenter le déploiement avec create-stack d'abord (pour voir l'erreur complète)
