@@ -404,20 +404,74 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           
-          # Écrire la clé SSH en gérant correctement les retours à la ligne
+          # Vérifier que le secret existe
+          if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then
+            echo "❌ ERREUR: Le secret EC2_SSH_PRIVATE_KEY n'est pas configuré dans GitHub"
+            echo ""
+            echo "📋 Pour configurer le secret:"
+            echo "  1. Allez dans: Settings → Secrets and variables → Actions"
+            echo "  2. Cliquez sur 'New repository secret'"
+            echo "  3. Nom: EC2_SSH_PRIVATE_KEY"
+            echo "  4. Valeur: Collez le contenu complet de votre clé privée (.pem)"
+            echo ""
+            echo "💡 Utilisez le script local pour obtenir le contenu exact:"
+            echo "  ./scripts/check-ssh-key.sh ~/.ssh/todo-app-key.pem"
+            exit 1
+          fi
+          
+          # Écrire la clé SSH
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
-          # Vérifier que la clé est valide
-          if ! ssh-keygen -l -f ~/.ssh/id_rsa &> /dev/null; then
+          # Vérifier le format de base
+          if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/id_rsa; then
+            echo "❌ ERREUR: La clé SSH ne contient pas l'en-tête BEGIN"
+            echo ""
+            echo "La clé doit commencer par:"
+            echo "  -----BEGIN RSA PRIVATE KEY-----"
+            echo "  ou"
+            echo "  -----BEGIN OPENSSH PRIVATE KEY-----"
+            echo ""
+            echo "Vérifiez que vous avez copié TOUTE la clé, y compris les en-têtes"
+            exit 1
+          fi
+          
+          if ! grep -q "END.*PRIVATE KEY" ~/.ssh/id_rsa; then
+            echo "❌ ERREUR: La clé SSH ne contient pas l'en-tête END"
+            echo ""
+            echo "La clé doit se terminer par:"
+            echo "  -----END RSA PRIVATE KEY-----"
+            echo "  ou"
+            echo "  -----END OPENSSH PRIVATE KEY-----"
+            exit 1
+          fi
+          
+          # Vérifier que la clé est valide avec ssh-keygen
+          echo "🔍 Validation de la clé SSH..."
+          VALIDATION_OUTPUT=$(ssh-keygen -l -f ~/.ssh/id_rsa 2>&1)
+          VALIDATION_EXIT=$?
+          
+          if [ $VALIDATION_EXIT -ne 0 ]; then
             echo "❌ ERREUR: La clé SSH n'est pas valide"
-            echo "Vérifiez que le secret EC2_SSH_PRIVATE_KEY contient la clé privée complète au format PEM"
+            echo ""
+            echo "Détails de l'erreur:"
+            echo "$VALIDATION_OUTPUT"
+            echo ""
+            echo "📋 Vérifications à faire:"
+            echo "  1. La clé est au format PEM complet"
+            echo "  2. Les en-têtes BEGIN et END sont présents"
+            echo "  3. Tous les retours à la ligne sont préservés"
+            echo "  4. Aucun espace supplémentaire n'a été ajouté"
+            echo ""
+            echo "💡 Pour obtenir le contenu exact de votre clé:"
+            echo "  Exécutez localement: ./scripts/check-ssh-key.sh ~/.ssh/todo-app-key.pem"
+            echo "  Puis copiez-collez TOUT le contenu affiché dans GitHub Secrets"
             exit 1
           fi
           
           # Afficher le fingerprint de la clé (pour debug)
-          echo "✅ Clé SSH configurée:"
-          ssh-keygen -l -f ~/.ssh/id_rsa || true
+          echo "✅ Clé SSH valide:"
+          ssh-keygen -l -f ~/.ssh/id_rsa
           
           # Ajouter l'IP du WebServer aux known_hosts
           ssh-keyscan -H ${{ needs.deploy-infrastructure.outputs.webserver-ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
@@ -539,20 +593,74 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           
-          # Écrire la clé SSH en gérant correctement les retours à la ligne
+          # Vérifier que le secret existe
+          if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then
+            echo "❌ ERREUR: Le secret EC2_SSH_PRIVATE_KEY n'est pas configuré dans GitHub"
+            echo ""
+            echo "📋 Pour configurer le secret:"
+            echo "  1. Allez dans: Settings → Secrets and variables → Actions"
+            echo "  2. Cliquez sur 'New repository secret'"
+            echo "  3. Nom: EC2_SSH_PRIVATE_KEY"
+            echo "  4. Valeur: Collez le contenu complet de votre clé privée (.pem)"
+            echo ""
+            echo "💡 Utilisez le script local pour obtenir le contenu exact:"
+            echo "  ./scripts/check-ssh-key.sh ~/.ssh/todo-app-key.pem"
+            exit 1
+          fi
+          
+          # Écrire la clé SSH
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
-          # Vérifier que la clé est valide
-          if ! ssh-keygen -l -f ~/.ssh/id_rsa &> /dev/null; then
+          # Vérifier le format de base
+          if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/id_rsa; then
+            echo "❌ ERREUR: La clé SSH ne contient pas l'en-tête BEGIN"
+            echo ""
+            echo "La clé doit commencer par:"
+            echo "  -----BEGIN RSA PRIVATE KEY-----"
+            echo "  ou"
+            echo "  -----BEGIN OPENSSH PRIVATE KEY-----"
+            echo ""
+            echo "Vérifiez que vous avez copié TOUTE la clé, y compris les en-têtes"
+            exit 1
+          fi
+          
+          if ! grep -q "END.*PRIVATE KEY" ~/.ssh/id_rsa; then
+            echo "❌ ERREUR: La clé SSH ne contient pas l'en-tête END"
+            echo ""
+            echo "La clé doit se terminer par:"
+            echo "  -----END RSA PRIVATE KEY-----"
+            echo "  ou"
+            echo "  -----END OPENSSH PRIVATE KEY-----"
+            exit 1
+          fi
+          
+          # Vérifier que la clé est valide avec ssh-keygen
+          echo "🔍 Validation de la clé SSH..."
+          VALIDATION_OUTPUT=$(ssh-keygen -l -f ~/.ssh/id_rsa 2>&1)
+          VALIDATION_EXIT=$?
+          
+          if [ $VALIDATION_EXIT -ne 0 ]; then
             echo "❌ ERREUR: La clé SSH n'est pas valide"
-            echo "Vérifiez que le secret EC2_SSH_PRIVATE_KEY contient la clé privée complète au format PEM"
+            echo ""
+            echo "Détails de l'erreur:"
+            echo "$VALIDATION_OUTPUT"
+            echo ""
+            echo "📋 Vérifications à faire:"
+            echo "  1. La clé est au format PEM complet"
+            echo "  2. Les en-têtes BEGIN et END sont présents"
+            echo "  3. Tous les retours à la ligne sont préservés"
+            echo "  4. Aucun espace supplémentaire n'a été ajouté"
+            echo ""
+            echo "💡 Pour obtenir le contenu exact de votre clé:"
+            echo "  Exécutez localement: ./scripts/check-ssh-key.sh ~/.ssh/todo-app-key.pem"
+            echo "  Puis copiez-collez TOUT le contenu affiché dans GitHub Secrets"
             exit 1
           fi
           
           # Afficher le fingerprint de la clé (pour debug)
-          echo "✅ Clé SSH configurée:"
-          ssh-keygen -l -f ~/.ssh/id_rsa || true
+          echo "✅ Clé SSH valide:"
+          ssh-keygen -l -f ~/.ssh/id_rsa
           
           # Ajouter l'IP du WebServer aux known_hosts
           ssh-keyscan -H ${{ needs.deploy-infrastructure.outputs.webserver-ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
