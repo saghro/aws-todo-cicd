@@ -212,9 +212,49 @@ jobs:
               exit 1
             fi
             echo "✅ Stack en cours de création..."
-            aws cloudformation wait stack-create-complete \
+            echo "⏳ Attente de la création (cela peut prendre 10-15 minutes)..."
+            
+            # Attendre avec gestion d'erreur
+            if ! aws cloudformation wait stack-create-complete \
               --stack-name ${{ env.STACK_NAME }} \
-              --region ${{ env.AWS_REGION }}
+              --region ${{ env.AWS_REGION }}; then
+              
+              echo ""
+              echo "❌ Échec de la création de la stack"
+              echo "===================================="
+              echo ""
+              
+              # Obtenir l'état final
+              FINAL_STATUS=$(aws cloudformation describe-stacks \
+                --stack-name ${{ env.STACK_NAME }} \
+                --region ${{ env.AWS_REGION }} \
+                --query "Stacks[0].StackStatus" \
+                --output text 2>/dev/null || echo "UNKNOWN")
+              
+              echo "État final: $FINAL_STATUS"
+              echo ""
+              
+              # Afficher les événements d'erreur
+              echo "📋 Événements d'erreur de la stack:"
+              aws cloudformation describe-stack-events \
+                --stack-name ${{ env.STACK_NAME }} \
+                --region ${{ env.AWS_REGION }} \
+                --max-items 10 \
+                --query "StackEvents[?ResourceStatus=='CREATE_FAILED' || ResourceStatus=='ROLLBACK_IN_PROGRESS' || ResourceStatus=='ROLLBACK_COMPLETE'].[Timestamp,ResourceStatus,LogicalResourceId,ResourceStatusReason]" \
+                --output table || echo "Impossible de récupérer les événements"
+              
+              echo ""
+              echo "📋 Tous les événements récents:"
+              aws cloudformation describe-stack-events \
+                --stack-name ${{ env.STACK_NAME }} \
+                --region ${{ env.AWS_REGION }} \
+                --max-items 15 \
+                --query "StackEvents[*].[Timestamp,ResourceStatus,LogicalResourceId,ResourceStatusReason]" \
+                --output table || echo "Impossible de récupérer les événements"
+              
+              exit 1
+            fi
+            
             echo "✅ Stack créée avec succès"
           else
             echo "🔄 Mise à jour de la stack existante..."
