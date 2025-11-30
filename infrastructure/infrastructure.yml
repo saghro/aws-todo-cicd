@@ -322,9 +322,35 @@ Resources:
           yum update -y
           amazon-linux-extras install postgresql14 -y
           yum install -y postgresql-server postgresql-contrib
+          
+          # Initialiser PostgreSQL
           postgresql-setup initdb
+          
+          # Configurer PostgreSQL pour écouter sur toutes les interfaces
+          sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /var/lib/pgsql/data/postgresql.conf
+          
+          # Configurer pg_hba.conf pour autoriser les connexions depuis le WebServer
+          # Obtenir l'IP du WebServer depuis les tags ou métadonnées
+          # Pour l'instant, autoriser toutes les connexions depuis le subnet privé
+          echo "host    all             all             10.0.1.0/24          md5" >> /var/lib/pgsql/data/pg_hba.conf
+          echo "host    all             all             10.0.2.0/24          md5" >> /var/lib/pgsql/data/pg_hba.conf
+          
+          # Démarrer PostgreSQL
           systemctl start postgresql
           systemctl enable postgresql
+          
+          # Attendre que PostgreSQL soit prêt
+          sleep 5
+          
+          # Créer la base de données et l'utilisateur (sera fait par le script d'initialisation)
+          # Mais on peut créer l'utilisateur de base ici
+          sudo -u postgres psql << 'PSQL_INIT' || true
+          CREATE USER todouser WITH PASSWORD 'VotreMotDePasse123!';
+          CREATE DATABASE tododb OWNER todouser;
+          GRANT ALL PRIVILEGES ON DATABASE tododb TO todouser;
+          \c tododb
+          GRANT ALL ON SCHEMA public TO todouser;
+PSQL_INIT
       Tags:
         - Key: Name
           Value: !Sub ${EnvironmentName}-database
