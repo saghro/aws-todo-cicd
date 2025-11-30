@@ -102,6 +102,35 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Verify Key Pair exists
+        run: |
+          echo "🔍 Vérification de la Key Pair EC2..."
+          KEY_PAIR_NAME="${{ secrets.EC2_KEY_PAIR_NAME }}"
+          
+          if aws ec2 describe-key-pairs --key-names "$KEY_PAIR_NAME" --region ${{ env.AWS_REGION }} &> /dev/null; then
+            echo "✅ Key Pair '$KEY_PAIR_NAME' existe dans la région ${{ env.AWS_REGION }}"
+            
+            # Afficher le fingerprint
+            FINGERPRINT=$(aws ec2 describe-key-pairs \
+              --key-names "$KEY_PAIR_NAME" \
+              --region ${{ env.AWS_REGION }} \
+              --query "KeyPairs[0].KeyFingerprint" \
+              --output text)
+            echo "📋 Fingerprint: $FINGERPRINT"
+          else
+            echo "❌ ERREUR: Key Pair '$KEY_PAIR_NAME' n'existe pas dans la région ${{ env.AWS_REGION }}"
+            echo ""
+            echo "🔧 Solutions:"
+            echo "  1. Créez la Key Pair dans la console AWS:"
+            echo "     https://${{ env.AWS_REGION }}.console.aws.amazon.com/ec2/home?region=${{ env.AWS_REGION }}#KeyPairs:"
+            echo ""
+            echo "  2. Ou créez-la via AWS CLI:"
+            echo "     aws ec2 create-key-pair --key-name $KEY_PAIR_NAME --region ${{ env.AWS_REGION }}"
+            echo ""
+            echo "  3. Assurez-vous que le secret EC2_KEY_PAIR_NAME dans GitHub correspond au nom exact"
+            exit 1
+          fi
+
       - name: Validate CloudFormation template
         run: |
           aws cloudformation validate-template \
