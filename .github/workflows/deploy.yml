@@ -144,16 +144,79 @@ jobs:
           echo "Key Pair: ${{ secrets.EC2_KEY_PAIR_NAME }}"
           echo ""
           
-          # Tenter le déploiement
-          if ! aws cloudformation deploy \
-            --template-file infrastructure/infrastructure.yml \
+          # Vérifier que la Key Pair existe AVANT le déploiement
+          echo "🔍 Vérification finale de la Key Pair..."
+          KEY_PAIR_NAME="${{ secrets.EC2_KEY_PAIR_NAME }}"
+          if ! aws ec2 describe-key-pairs --key-names "$KEY_PAIR_NAME" --region ${{ env.AWS_REGION }} &> /dev/null; then
+            echo "❌ ERREUR CRITIQUE: Key Pair '$KEY_PAIR_NAME' n'existe pas dans ${{ env.AWS_REGION }}"
+            echo ""
+            echo "Key Pairs disponibles dans ${{ env.AWS_REGION }}:"
+            aws ec2 describe-key-pairs --region ${{ env.AWS_REGION }} --query "KeyPairs[*].KeyName" --output table
+            exit 1
+          fi
+          echo "✅ Key Pair vérifiée: $KEY_PAIR_NAME"
+          echo ""
+          
+          # Tenter le déploiement avec create-stack d'abord (pour voir l'erreur complète)
+          echo "🔍 Vérification si la stack existe..."
+          STACK_EXISTS=$(aws cloudformation describe-stacks \
             --stack-name ${{ env.STACK_NAME }} \
-            --parameter-overrides \
-              EnvironmentName=prod \
-              KeyPairName=${{ secrets.EC2_KEY_PAIR_NAME }} \
-              AlertEmail=${{ secrets.ALERT_EMAIL }} \
-            --capabilities CAPABILITY_IAM \
-            --no-fail-on-empty-changeset; then
+            --region ${{ env.AWS_REGION }} \
+            --query "Stacks[0].StackStatus" \
+            --output text 2>/dev/null || echo "NOT_FOUND")
+          
+          if [ "$STACK_EXISTS" == "NOT_FOUND" ]; then
+            echo "📦 Création de la stack (première fois)..."
+            # Utiliser create-stack pour voir l'erreur complète
+            if ! aws cloudformation create-stack \
+              --stack-name ${{ env.STACK_NAME }} \
+              --template-body file://infrastructure/infrastructure.yml \
+              --parameters \
+                ParameterKey=EnvironmentName,ParameterValue=prod \
+                ParameterKey=KeyPairName,ParameterValue="$KEY_PAIR_NAME" \
+                ParameterKey=AlertEmail,ParameterValue=${{ secrets.ALERT_EMAIL }} \
+              --capabilities CAPABILITY_IAM \
+              --region ${{ env.AWS_REGION }}; then
+              
+              echo ""
+              echo "❌ Échec de la création de la stack"
+              echo "Récupération des détails de l'erreur..."
+              # Attendre un peu pour que l'erreur soit enregistrée
+              sleep 5
+              
+              # Obtenir les événements récents
+              aws cloudformation describe-stack-events \
+                --stack-name ${{ env.STACK_NAME }} \
+                --region ${{ env.AWS_REGION }} \
+                --max-items 5 \
+                --query "StackEvents[*].[Timestamp,ResourceStatus,LogicalResourceId,ResourceStatusReason]" \
+                --output table 2>/dev/null || echo "Stack pas encore créée"
+              
+              exit 1
+            fi
+            echo "✅ Stack en cours de création..."
+            aws cloudformation wait stack-create-complete \
+              --stack-name ${{ env.STACK_NAME }} \
+              --region ${{ env.AWS_REGION }}
+            echo "✅ Stack créée avec succès"
+          else
+            echo "🔄 Mise à jour de la stack existante..."
+            # Utiliser deploy pour la mise à jour
+            if ! aws cloudformation deploy \
+              --template-file infrastructure/infrastructure.yml \
+              --stack-name ${{ env.STACK_NAME }} \
+              --parameter-overrides \
+                EnvironmentName=prod \
+                KeyPairName="$KEY_PAIR_NAME" \
+                AlertEmail=${{ secrets.ALERT_EMAIL }} \
+              --capabilities CAPABILITY_IAM \
+              --no-fail-on-empty-changeset \
+              --region ${{ env.AWS_REGION }}; then
+              
+              echo ""
+              echo "❌ Échec de la mise à jour de la stack"
+              echo "Récupération des détails..."
+              sleep 3
             
             echo ""
             echo "❌ Échec du déploiement CloudFormation"
