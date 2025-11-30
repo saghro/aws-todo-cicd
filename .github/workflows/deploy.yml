@@ -937,13 +937,30 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Get WebServer IP from stack
+        id: get-webserver-ip
+        run: |
+          WEBSERVER_IP=$(aws cloudformation describe-stacks \
+            --stack-name ${{ env.STACK_NAME }} \
+            --region ${{ env.AWS_REGION }} \
+            --query "Stacks[0].Outputs[?OutputKey=='WebServerPublicIP'].OutputValue" \
+            --output text)
+          
+          if [ -z "$WEBSERVER_IP" ] || [ "$WEBSERVER_IP" == "None" ]; then
+            echo "❌ ERREUR: Impossible de récupérer l'IP du WebServer depuis la stack"
+            exit 1
+          fi
+          
+          echo "webserver-ip=$WEBSERVER_IP" >> $GITHUB_OUTPUT
+          echo "🌐 WebServer IP: $WEBSERVER_IP"
+
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          WEBSERVER_IP="${{ needs.deploy-infrastructure.outputs.webserver-ip }}"
+          WEBSERVER_IP="${{ steps.get-webserver-ip.outputs.webserver-ip }}"
           ssh-keyscan -H $WEBSERVER_IP >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Wait for application to start
@@ -951,7 +968,7 @@ jobs:
           echo "⏳ Attente du démarrage de l'application..."
           sleep 30
           
-          WEBSERVER_IP="${{ needs.deploy-infrastructure.outputs.webserver-ip }}"
+          WEBSERVER_IP="${{ steps.get-webserver-ip.outputs.webserver-ip }}"
           MAX_ATTEMPTS=24
           ATTEMPT=0
           
@@ -1017,7 +1034,7 @@ jobs:
 
       - name: Check API health
         run: |
-          WEBSERVER_IP="${{ needs.deploy-infrastructure.outputs.webserver-ip }}"
+          WEBSERVER_IP="${{ steps.get-webserver-ip.outputs.webserver-ip }}"
           
           echo "🔍 Vérification de l'API..."
           
@@ -1033,7 +1050,7 @@ jobs:
 
       - name: Test API endpoints
         run: |
-          WEBSERVER_IP="${{ needs.deploy-infrastructure.outputs.webserver-ip }}"
+          WEBSERVER_IP="${{ steps.get-webserver-ip.outputs.webserver-ip }}"
           
           echo "📋 Test GET /api/todos..."
           curl -s -m 10 http://$WEBSERVER_IP:3000/api/todos | jq . || echo "Todos endpoint test completed"
