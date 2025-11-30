@@ -439,10 +439,33 @@ jobs:
           if ! grep -q "END.*PRIVATE KEY" ~/.ssh/id_rsa; then
             echo "❌ ERREUR: La clé SSH ne contient pas l'en-tête END"
             echo ""
-            echo "La clé doit se terminer par:"
-            echo "  -----END RSA PRIVATE KEY-----"
-            echo "  ou"
-            echo "  -----END OPENSSH PRIVATE KEY-----"
+            echo "🔍 Diagnostic:"
+            KEY_SIZE=$(wc -c < ~/.ssh/id_rsa)
+            KEY_LINES=$(wc -l < ~/.ssh/id_rsa)
+            LAST_LINE=$(tail -1 ~/.ssh/id_rsa)
+            echo "  Taille: $KEY_SIZE octets"
+            echo "  Lignes: $KEY_LINES"
+            echo "  Dernière ligne: '$LAST_LINE'"
+            echo ""
+            if [ $KEY_SIZE -lt 1500 ]; then
+              echo "  ⚠️  La clé est TROP COURTE! Elle est probablement TRONQUÉE."
+              echo "  Une clé RSA privée complète fait généralement 1700-1800 octets."
+            fi
+            echo ""
+            echo "📋 Cause probable:"
+            echo "  La clé n'a pas été copiée complètement dans GitHub Secrets."
+            echo "  La fin de la clé (ligne -----END RSA PRIVATE KEY-----) est manquante."
+            echo ""
+            echo "💡 Solution:"
+            echo "  1. Exécutez localement: ./scripts/generate-ssh-secret.sh ~/.ssh/todo-app-key.pem"
+            echo "  2. Ouvrez le fichier github-ssh-secret.txt généré"
+            echo "  3. Vérifiez que la dernière ligne est: -----END RSA PRIVATE KEY-----"
+            echo "  4. Sélectionnez TOUT le contenu (Cmd+A) et copiez-le"
+            echo "  5. Dans GitHub: Settings → Secrets → Actions → EC2_SSH_PRIVATE_KEY"
+            echo "  6. Supprimez l'ancien contenu et collez TOUT le nouveau contenu"
+            echo "  7. Assurez-vous que la dernière ligne visible est -----END RSA PRIVATE KEY-----"
+            echo ""
+            echo "📖 Guide complet: CONFIGURER_SSH_SECRET.md"
             exit 1
           fi
           
@@ -656,10 +679,33 @@ jobs:
           if ! grep -q "END.*PRIVATE KEY" ~/.ssh/id_rsa; then
             echo "❌ ERREUR: La clé SSH ne contient pas l'en-tête END"
             echo ""
-            echo "La clé doit se terminer par:"
-            echo "  -----END RSA PRIVATE KEY-----"
-            echo "  ou"
-            echo "  -----END OPENSSH PRIVATE KEY-----"
+            echo "🔍 Diagnostic:"
+            KEY_SIZE=$(wc -c < ~/.ssh/id_rsa)
+            KEY_LINES=$(wc -l < ~/.ssh/id_rsa)
+            LAST_LINE=$(tail -1 ~/.ssh/id_rsa)
+            echo "  Taille: $KEY_SIZE octets"
+            echo "  Lignes: $KEY_LINES"
+            echo "  Dernière ligne: '$LAST_LINE'"
+            echo ""
+            if [ $KEY_SIZE -lt 1500 ]; then
+              echo "  ⚠️  La clé est TROP COURTE! Elle est probablement TRONQUÉE."
+              echo "  Une clé RSA privée complète fait généralement 1700-1800 octets."
+            fi
+            echo ""
+            echo "📋 Cause probable:"
+            echo "  La clé n'a pas été copiée complètement dans GitHub Secrets."
+            echo "  La fin de la clé (ligne -----END RSA PRIVATE KEY-----) est manquante."
+            echo ""
+            echo "💡 Solution:"
+            echo "  1. Exécutez localement: ./scripts/generate-ssh-secret.sh ~/.ssh/todo-app-key.pem"
+            echo "  2. Ouvrez le fichier github-ssh-secret.txt généré"
+            echo "  3. Vérifiez que la dernière ligne est: -----END RSA PRIVATE KEY-----"
+            echo "  4. Sélectionnez TOUT le contenu (Cmd+A) et copiez-le"
+            echo "  5. Dans GitHub: Settings → Secrets → Actions → EC2_SSH_PRIVATE_KEY"
+            echo "  6. Supprimez l'ancien contenu et collez TOUT le nouveau contenu"
+            echo "  7. Assurez-vous que la dernière ligne visible est -----END RSA PRIVATE KEY-----"
+            echo ""
+            echo "📖 Guide complet: CONFIGURER_SSH_SECRET.md"
             exit 1
           fi
           
