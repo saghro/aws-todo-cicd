@@ -408,19 +408,6 @@ app.get('/api/todos/stats', async (req, res) => {
     }
 });
 
-// ==================== GESTION DES ERREURS ====================
-
-// Route 404 - Route non trouvée
-app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        error: 'Route non trouvée',
-        path: req.path,
-        method: req.method,
-        timestamp: new Date().toISOString()
-    });
-});
-
 // ==================== SERVIR LE FRONTEND (PRODUCTION) ====================
 // Servir les fichiers statiques du frontend React en production
 const fs = require('fs');
