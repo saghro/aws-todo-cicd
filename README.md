@@ -36,7 +36,7 @@ Application Todo complète déployée sur AWS avec infrastructure as code, monit
                      │
          ┌───────────▼───────────┐
          │    CloudWatch        │
-         │    + SNS Alerts      │<img width="2483" height="1701" alt="AWS Architecture Diagram" src="https://github.com/user-attachments/assets/eb6e3437-2106-41c2-9b7e-e0d6f0e35105" />
+         │    + SNS Alerts      │
 
          └───────────────────────┘
 ```
