@@ -402,9 +402,26 @@ jobs:
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          
+          # Écrire la clé SSH en gérant correctement les retours à la ligne
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ needs.deploy-infrastructure.outputs.webserver-ip }} >> ~/.ssh/known_hosts
+          
+          # Vérifier que la clé est valide
+          if ! ssh-keygen -l -f ~/.ssh/id_rsa &> /dev/null; then
+            echo "❌ ERREUR: La clé SSH n'est pas valide"
+            echo "Vérifiez que le secret EC2_SSH_PRIVATE_KEY contient la clé privée complète au format PEM"
+            exit 1
+          fi
+          
+          # Afficher le fingerprint de la clé (pour debug)
+          echo "✅ Clé SSH configurée:"
+          ssh-keygen -l -f ~/.ssh/id_rsa || true
+          
+          # Ajouter l'IP du WebServer aux known_hosts
+          ssh-keyscan -H ${{ needs.deploy-infrastructure.outputs.webserver-ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          chmod 644 ~/.ssh/known_hosts
 
       - name: Get database IP from stack
         id: get-db-ip
@@ -418,31 +435,84 @@ jobs:
       - name: Wait for instances to be ready
         run: |
           echo "⏳ Attente de la disponibilité des instances..."
-          sleep 60
+          WEBSERVER_IP="${{ needs.deploy-infrastructure.outputs.webserver-ip }}"
+          MAX_ATTEMPTS=30
+          ATTEMPT=0
+          
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            echo "Tentative $((ATTEMPT + 1))/$MAX_ATTEMPTS: Test de connexion SSH..."
+            if ssh -o StrictHostKeyChecking=no \
+               -o ConnectTimeout=10 \
+               -o BatchMode=yes \
+               -i ~/.ssh/id_rsa \
+               ec2-user@$WEBSERVER_IP \
+               "echo 'SSH connection successful'" &> /dev/null; then
+              echo "✅ Instance WebServer est prête!"
+              break
+            fi
+            ATTEMPT=$((ATTEMPT + 1))
+            if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+              echo "⏳ Instance pas encore prête, attente de 10 secondes..."
+              sleep 10
+            fi
+          done
+          
+          if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+            echo "❌ ERREUR: Impossible de se connecter au WebServer après $MAX_ATTEMPTS tentatives"
+            echo "Vérifiez que:"
+            echo "  1. L'instance est en cours d'exécution"
+            echo "  2. Le Security Group autorise les connexions SSH depuis GitHub Actions"
+            echo "  3. La clé SSH est correctement configurée"
+            exit 1
+          fi
 
       - name: Deploy database initialization script
         run: |
+          WEBSERVER_IP="${{ needs.deploy-infrastructure.outputs.webserver-ip }}"
+          DATABASE_IP="${{ steps.get-db-ip.outputs.database-ip }}"
+          
+          echo "📦 Déploiement du script d'initialisation de la base de données..."
+          echo "WebServer IP: $WEBSERVER_IP"
+          echo "Database IP: $DATABASE_IP"
+          
           # Copier le script sur le WebServer
-          scp -o StrictHostKeyChecking=no \
+          echo "1️⃣  Copie du script sur le WebServer..."
+          if ! scp -o StrictHostKeyChecking=no \
             -o ConnectTimeout=30 \
             -i ~/.ssh/id_rsa \
             database/init.sql \
-            ec2-user@${{ needs.deploy-infrastructure.outputs.webserver-ip }}:/tmp/init.sql || exit 1
+            ec2-user@$WEBSERVER_IP:/tmp/init.sql; then
+            echo "❌ ERREUR: Impossible de copier le script sur le WebServer"
+            exit 1
+          fi
+          echo "✅ Script copié sur le WebServer"
           
           # Copier le script sur la DB via le WebServer
-          ssh -o StrictHostKeyChecking=no \
+          echo "2️⃣  Copie du script sur la Database via le WebServer..."
+          if ! ssh -o StrictHostKeyChecking=no \
             -o ConnectTimeout=30 \
             -i ~/.ssh/id_rsa \
-            ec2-user@${{ needs.deploy-infrastructure.outputs.webserver-ip }} \
-            "scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa /tmp/init.sql ec2-user@${{ steps.get-db-ip.outputs.database-ip }}:/tmp/init.sql" || exit 1
+            ec2-user@$WEBSERVER_IP \
+            "scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa /tmp/init.sql ec2-user@$DATABASE_IP:/tmp/init.sql"; then
+            echo "❌ ERREUR: Impossible de copier le script sur la Database"
+            echo "Vérifiez que le WebServer peut se connecter à la Database via SSH"
+            exit 1
+          fi
+          echo "✅ Script copié sur la Database"
           
           # Exécuter le script sur la DB
-          ssh -o StrictHostKeyChecking=no \
+          echo "3️⃣  Exécution du script d'initialisation..."
+          if ssh -o StrictHostKeyChecking=no \
             -o ConnectTimeout=30 \
             -i ~/.ssh/id_rsa \
-            ec2-user@${{ needs.deploy-infrastructure.outputs.webserver-ip }} \
-            "ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ec2-user@${{ steps.get-db-ip.outputs.database-ip }} \
-            'sudo -u postgres psql -f /tmp/init.sql || echo \"Database may already be initialized\"'" || echo "Database setup completed or already exists"
+            ec2-user@$WEBSERVER_IP \
+            "ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ec2-user@$DATABASE_IP \
+            'sudo -u postgres psql -f /tmp/init.sql 2>&1 || echo \"Database may already be initialized\"'"; then
+            echo "✅ Base de données initialisée avec succès"
+          else
+            echo "⚠️  La base de données est peut-être déjà initialisée ou il y a eu une erreur"
+            echo "Vérifiez les logs ci-dessus pour plus de détails"
+          fi
 
   # ==================== JOB 5: Deploy Application ====================
   deploy-application:
@@ -467,9 +537,26 @@ jobs:
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          
+          # Écrire la clé SSH en gérant correctement les retours à la ligne
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ needs.deploy-infrastructure.outputs.webserver-ip }} >> ~/.ssh/known_hosts
+          
+          # Vérifier que la clé est valide
+          if ! ssh-keygen -l -f ~/.ssh/id_rsa &> /dev/null; then
+            echo "❌ ERREUR: La clé SSH n'est pas valide"
+            echo "Vérifiez que le secret EC2_SSH_PRIVATE_KEY contient la clé privée complète au format PEM"
+            exit 1
+          fi
+          
+          # Afficher le fingerprint de la clé (pour debug)
+          echo "✅ Clé SSH configurée:"
+          ssh-keygen -l -f ~/.ssh/id_rsa || true
+          
+          # Ajouter l'IP du WebServer aux known_hosts
+          ssh-keyscan -H ${{ needs.deploy-infrastructure.outputs.webserver-ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          chmod 644 ~/.ssh/known_hosts
 
       - name: Get database IP
         id: get-db-ip
