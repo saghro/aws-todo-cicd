@@ -350,7 +350,7 @@ Resources:
           GRANT ALL PRIVILEGES ON DATABASE tododb TO todouser;
           \c tododb
           GRANT ALL ON SCHEMA public TO todouser;
-PSQL_INIT
+          PSQL_INIT
       Tags:
         - Key: Name
           Value: !Sub ${EnvironmentName}-database
