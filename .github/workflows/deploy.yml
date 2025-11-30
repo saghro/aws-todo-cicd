@@ -310,12 +310,12 @@ jobs:
             # Utiliser deploy pour la mise à jour
             if ! aws cloudformation deploy \
               --template-file infrastructure/infrastructure.yml \
-              --stack-name ${{ env.STACK_NAME }} \
-              --parameter-overrides \
-                EnvironmentName=prod \
+            --stack-name ${{ env.STACK_NAME }} \
+            --parameter-overrides \
+              EnvironmentName=prod \
                 KeyPairName="$KEY_PAIR_NAME" \
-                AlertEmail=${{ secrets.ALERT_EMAIL }} \
-              --capabilities CAPABILITY_IAM \
+              AlertEmail=${{ secrets.ALERT_EMAIL }} \
+            --capabilities CAPABILITY_IAM \
               --no-fail-on-empty-changeset \
               --region ${{ env.AWS_REGION }}; then
               
@@ -839,10 +839,15 @@ jobs:
           fi
           
           # Créer une archive avec backend + frontend build
-          tar -czf app.tar.gz -C backend . -C ../frontend/build frontend
-          
-          # Renommer pour compatibilité
-          mv app.tar.gz backend.tar.gz
+          # Structure: backend/ dans app/, frontend/build/ dans ../frontend/build/
+          mkdir -p deploy-temp/backend
+          cp -r backend/* deploy-temp/backend/
+          mkdir -p deploy-temp/frontend
+          cp -r frontend/build deploy-temp/frontend/
+          cd deploy-temp
+          tar -czf ../backend.tar.gz backend frontend
+          cd ..
+          rm -rf deploy-temp
           
           # Copier l'archive sur le serveur
           scp -o StrictHostKeyChecking=no \
@@ -857,31 +862,25 @@ jobs:
             -i ~/.ssh/id_rsa \
             ec2-user@${{ needs.deploy-infrastructure.outputs.webserver-ip }} << 'EOF'
             mkdir -p /home/ec2-user/app
-            cd /home/ec2-user/app
-            tar -xzf /tmp/backend.tar.gz
-            rm /tmp/backend.tar.gz
+            cd /tmp
+            tar -xzf backend.tar.gz
+            rm backend.tar.gz
+            
+            # Déplacer le backend dans /home/ec2-user/app
+            cp -r backend/* /home/ec2-user/app/
             
             # Déplacer le frontend build au bon endroit (relatif à /home/ec2-user/app)
-            if [ -d "../frontend/frontend" ]; then
+            if [ -d "frontend/build" ]; then
               echo "📦 Déplacement du frontend build..."
-              mkdir -p ../frontend/build
-              mv ../frontend/frontend/* ../frontend/build/ 2>/dev/null || true
-              rm -rf ../frontend/frontend
-              echo "✅ Frontend déployé dans ../frontend/build/"
-            elif [ -d "frontend" ]; then
-              echo "📦 Déplacement du frontend build..."
-              mkdir -p ../frontend/build
-              mv frontend/* ../frontend/build/ 2>/dev/null || true
-              rmdir frontend 2>/dev/null || true
-              echo "✅ Frontend déployé dans ../frontend/build/"
+              mkdir -p /home/ec2-user/frontend
+              mv frontend/build /home/ec2-user/frontend/
+              echo "✅ Frontend déployé dans /home/ec2-user/frontend/build/"
+              ls -la /home/ec2-user/frontend/build/ | head -5
+            else
+              echo "⚠️  Frontend build non trouvé dans l'archive"
             fi
             
-            # Vérifier que le frontend est présent
-            if [ -d "../frontend/build" ]; then
-              echo "✅ Frontend trouvé: $(ls -la ../frontend/build/ | head -5)"
-            else
-              echo "⚠️  Frontend build non trouvé, l'API sera disponible sans interface web"
-            fi
+            cd /home/ec2-user/app
             
             # Installer Node.js avec NVM (plus fiable sur Amazon Linux 2)
             if ! command -v node &> /dev/null; then
@@ -910,7 +909,7 @@ jobs:
             
             # Installer les dépendances
             npm install --production --no-audit
-            
+          
             # Arrêter l'ancienne instance
             pkill -f "node server.js" || true
             sleep 2
@@ -1121,7 +1120,7 @@ jobs:
               echo "✅ Le déploiement de l'API est réussi, mais la connexion DB doit être corrigée"
             else
               echo "❌ Problème inconnu avec l'API"
-              exit 1
+            exit 1
             fi
           fi
 
