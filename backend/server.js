@@ -430,12 +430,18 @@ if (process.env.NODE_ENV === 'production' && fs.existsSync(frontendBuildPath)) {
     app.use(express.static(frontendBuildPath));
     
     // Pour toutes les routes non-API, servir index.html (pour React Router)
-    app.get('*', (req, res, next) => {
-        // Ne pas intercepter les routes API
+    // Utiliser une fonction middleware au lieu d'une route catch-all
+    app.use((req, res, next) => {
+        // Ne pas intercepter les routes API ou health
         if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
             return next();
         }
-        res.sendFile(path.join(frontendBuildPath, 'index.html'));
+        // Si le fichier n'existe pas, servir index.html (pour React Router)
+        res.sendFile(path.join(frontendBuildPath, 'index.html'), (err) => {
+            if (err) {
+                next(err);
+            }
+        });
     });
     
     console.log(chalk.green('✅ Frontend React sera servi depuis:'), chalk.white(frontendBuildPath));
