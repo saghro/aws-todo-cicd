@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const path = require('path');
 const { Pool } = require('pg');
 const chalk = require('chalk');
 require('dotenv').config();
@@ -419,6 +420,25 @@ app.use((req, res) => {
         timestamp: new Date().toISOString()
     });
 });
+
+// ==================== SERVIR LE FRONTEND (PRODUCTION) ====================
+// Servir les fichiers statiques du frontend React en production
+const frontendBuildPath = path.join(__dirname, '../frontend/build');
+if (process.env.NODE_ENV === 'production' && require('fs').existsSync(frontendBuildPath)) {
+    // Servir les fichiers statiques du frontend
+    app.use(express.static(frontendBuildPath));
+    
+    // Pour toutes les routes non-API, servir index.html (pour React Router)
+    app.get('*', (req, res, next) => {
+        // Ne pas intercepter les routes API
+        if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
+            return next();
+        }
+        res.sendFile(path.join(frontendBuildPath, 'index.html'));
+    });
+    
+    console.log(chalk.green('✅ Frontend React sera servi depuis:'), chalk.white(frontendBuildPath));
+}
 
 // Middleware de gestion des erreurs globales
 app.use((err, req, res, next) => {

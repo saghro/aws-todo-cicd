@@ -69,7 +69,17 @@ jobs:
         working-directory: ./frontend
         run: |
           npm ci
+          # Configurer l'URL de l'API pour la production
+          # L'IP sera remplacée lors du déploiement
+          echo "REACT_APP_API_URL=http://PLACEHOLDER_WEBSERVER_IP:3000" > .env.production
           npm run build
+          # Créer un fichier de configuration pour override dynamique
+          cat > build/config.js << 'CONFIG_EOF'
+          // Configuration de l'API - sera mise à jour lors du déploiement
+          window.REACT_APP_API_URL = window.REACT_APP_API_URL || 'http://PLACEHOLDER_WEBSERVER_IP:3000';
+          CONFIG_EOF
+          # Injecter le script dans index.html
+          sed -i 's|</head>|<script src="/config.js"></script></head>|' build/index.html
 
       - name: Archive artifacts
         uses: actions/upload-artifact@v4
@@ -805,9 +815,11 @@ jobs:
             --output text)
           echo "database-ip=$DATABASE_IP" >> $GITHUB_OUTPUT
 
-      - name: Deploy backend to EC2
+      - name: Deploy backend and frontend to EC2
         run: |
-          # Créer le fichier .env
+          WEBSERVER_IP="${{ needs.deploy-infrastructure.outputs.webserver-ip }}"
+          
+          # Créer le fichier .env pour le backend
           echo "PORT=3000" > backend/.env
           echo "NODE_ENV=production" >> backend/.env
           echo "DB_HOST=${{ steps.get-db-ip.outputs.database-ip }}" >> backend/.env
@@ -816,8 +828,21 @@ jobs:
           echo "DB_USER=todouser" >> backend/.env
           echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> backend/.env
           
-          # Créer une archive
-          tar -czf backend.tar.gz -C backend .
+          # Configurer l'URL de l'API dans le frontend build
+          if [ -d "frontend/build" ]; then
+            echo "🔧 Configuration de l'URL de l'API dans le frontend..."
+            # Mettre à jour config.js avec la vraie IP
+            sed -i "s|PLACEHOLDER_WEBSERVER_IP|$WEBSERVER_IP|g" frontend/build/config.js
+            # Mettre à jour index.html avec la vraie IP dans le script inline si présent
+            sed -i "s|PLACEHOLDER_WEBSERVER_IP|$WEBSERVER_IP|g" frontend/build/index.html
+            echo "✅ Frontend configuré avec l'URL API: http://$WEBSERVER_IP:3000"
+          fi
+          
+          # Créer une archive avec backend + frontend build
+          tar -czf app.tar.gz -C backend . -C ../frontend/build frontend
+          
+          # Renommer pour compatibilité
+          mv app.tar.gz backend.tar.gz
           
           # Copier l'archive sur le serveur
           scp -o StrictHostKeyChecking=no \
@@ -835,6 +860,15 @@ jobs:
             cd /home/ec2-user/app
             tar -xzf /tmp/backend.tar.gz
             rm /tmp/backend.tar.gz
+            
+            # Déplacer le frontend build au bon endroit
+            if [ -d "frontend" ]; then
+              echo "📦 Déplacement du frontend build..."
+              mkdir -p ../frontend/build
+              mv frontend/* ../frontend/build/ 2>/dev/null || true
+              rmdir frontend 2>/dev/null || true
+              echo "✅ Frontend déployé dans ../frontend/build/"
+            fi
             
             # Installer Node.js avec NVM (plus fiable sur Amazon Linux 2)
             if ! command -v node &> /dev/null; then
