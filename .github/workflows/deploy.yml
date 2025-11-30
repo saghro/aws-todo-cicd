@@ -839,15 +839,31 @@ jobs:
           fi
           
           # Créer une archive avec backend + frontend build
-          # Structure: backend/ dans app/, frontend/build/ dans ../frontend/build/
+          echo "📦 Création de l'archive avec backend et frontend..."
+          
+          # Vérifier que le frontend build existe
+          if [ ! -d "frontend/build" ]; then
+            echo "❌ ERREUR: frontend/build n'existe pas!"
+            echo "Contenu du répertoire:"
+            ls -la frontend/ 2>/dev/null || echo "Répertoire frontend n'existe pas"
+            exit 1
+          fi
+          
+          # Créer une structure temporaire pour l'archive
           mkdir -p deploy-temp/backend
           cp -r backend/* deploy-temp/backend/
           mkdir -p deploy-temp/frontend
-          cp -r frontend/build deploy-temp/frontend/
+          cp -r frontend/build/* deploy-temp/frontend/
+          
+          # Créer l'archive
           cd deploy-temp
           tar -czf ../backend.tar.gz backend frontend
           cd ..
           rm -rf deploy-temp
+          
+          echo "✅ Archive créée: backend.tar.gz"
+          echo "Vérification du contenu:"
+          tar -tzf backend.tar.gz | head -10
           
           # Copier l'archive sur le serveur
           scp -o StrictHostKeyChecking=no \
