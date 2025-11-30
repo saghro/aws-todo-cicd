@@ -412,64 +412,83 @@ Resources:
     Type: AWS::CloudWatch::Dashboard
     Properties:
       DashboardName: !Sub ${EnvironmentName}-todo-app-dashboard
-      DashboardBody: !Sub |
-        {
-          "widgets": [
-            {
-              "type": "metric",
-              "x": 0,
-              "y": 0,
-              "width": 12,
-              "height": 6,
-              "properties": {
-                "metrics": [
-                  ["AWS/EC2", "CPUUtilization", {"instanceId": "${WebServerInstance}"}],
-                  ["...", {"instanceId": "${DatabaseInstance}"}]
-                ],
-                "period": 300,
-                "stat": "Average",
-                "region": "${AWS::Region}",
-                "title": "CPU Utilization (%)"
+      DashboardBody: !Sub 
+        - |
+          {
+            "widgets": [
+              {
+                "type": "metric",
+                "x": 0,
+                "y": 0,
+                "width": 12,
+                "height": 6,
+                "properties": {
+                  "metrics": [
+                    ["AWS/EC2", "CPUUtilization", {"InstanceId": "${WebServerId}"}],
+                    ["AWS/EC2", "CPUUtilization", {"InstanceId": "${DatabaseId}"}]
+                  ],
+                  "period": 300,
+                  "stat": "Average",
+                  "region": "${AWSRegion}",
+                  "title": "CPU Utilization (%)"
+                }
+              },
+              {
+                "type": "metric",
+                "x": 12,
+                "y": 0,
+                "width": 12,
+                "height": 6,
+                "properties": {
+                  "metrics": [
+                    ["AWS/EC2", "NetworkIn", {"InstanceId": "${WebServerId}"}],
+                    ["AWS/EC2", "NetworkOut", {"InstanceId": "${WebServerId}"}]
+                  ],
+                  "period": 300,
+                  "stat": "Sum",
+                  "region": "${AWSRegion}",
+                  "title": "WebServer Network Traffic (Bytes)"
+                }
+              },
+              {
+                "type": "metric",
+                "x": 0,
+                "y": 6,
+                "width": 12,
+                "height": 6,
+                "properties": {
+                  "metrics": [
+                    ["AWS/EC2", "NetworkIn", {"InstanceId": "${DatabaseId}"}],
+                    ["AWS/EC2", "NetworkOut", {"InstanceId": "${DatabaseId}"}]
+                  ],
+                  "period": 300,
+                  "stat": "Sum",
+                  "region": "${AWSRegion}",
+                  "title": "Database Network Traffic (Bytes)"
+                }
+              },
+              {
+                "type": "metric",
+                "x": 12,
+                "y": 6,
+                "width": 12,
+                "height": 6,
+                "properties": {
+                  "metrics": [
+                    ["AWS/EC2", "StatusCheckFailed", {"InstanceId": "${WebServerId}"}],
+                    ["AWS/EC2", "StatusCheckFailed", {"InstanceId": "${DatabaseId}"}]
+                  ],
+                  "period": 60,
+                  "stat": "Maximum",
+                  "region": "${AWSRegion}",
+                  "title": "Status Check Failed"
+                }
               }
-            },
-            {
-              "type": "metric",
-              "x": 12,
-              "y": 0,
-              "width": 12,
-              "height": 6,
-              "properties": {
-                "metrics": [
-                  ["AWS/EC2", "NetworkIn", {"instanceId": "${WebServerInstance}"}],
-                  ["...", "NetworkOut", {"instanceId": "${WebServerInstance}"}],
-                  ["...", "NetworkIn", {"instanceId": "${DatabaseInstance}"}],
-                  ["...", "NetworkOut", {"instanceId": "${DatabaseInstance}"}]
-                ],
-                "period": 300,
-                "stat": "Sum",
-                "region": "${AWS::Region}",
-                "title": "Network Traffic (Bytes)"
-              }
-            },
-            {
-              "type": "metric",
-              "x": 0,
-              "y": 6,
-              "width": 12,
-              "height": 6,
-              "properties": {
-                "metrics": [
-                  ["AWS/EC2", "StatusCheckFailed", {"instanceId": "${WebServerInstance}"}],
-                  ["...", {"instanceId": "${DatabaseInstance}"}]
-                ],
-                "period": 60,
-                "stat": "Maximum",
-                "region": "${AWS::Region}",
-                "title": "Status Check Failed"
-              }
-            }
-          ]
-        }
+            ]
+          }
+        - WebServerId: !Ref WebServerInstance
+          DatabaseId: !Ref DatabaseInstance
+          AWSRegion: !Ref AWS::Region
 
 Outputs:
   VPCId:

@@ -235,13 +235,27 @@ jobs:
               echo ""
               
               # Afficher les événements d'erreur
-              echo "📋 Événements d'erreur de la stack:"
-              aws cloudformation describe-stack-events \
+              echo "📋 Événements d'erreur de la stack (CREATE_FAILED):"
+              FAILED_EVENTS=$(aws cloudformation describe-stack-events \
                 --stack-name ${{ env.STACK_NAME }} \
                 --region ${{ env.AWS_REGION }} \
-                --max-items 10 \
-                --query "StackEvents[?ResourceStatus=='CREATE_FAILED' || ResourceStatus=='ROLLBACK_IN_PROGRESS' || ResourceStatus=='ROLLBACK_COMPLETE'].[Timestamp,ResourceStatus,LogicalResourceId,ResourceStatusReason]" \
-                --output table || echo "Impossible de récupérer les événements"
+                --max-items 50 \
+                --query "StackEvents[?ResourceStatus=='CREATE_FAILED'].[Timestamp,LogicalResourceId,ResourceStatusReason]" \
+                --output table 2>/dev/null || echo "")
+              
+              if [ -n "$FAILED_EVENTS" ]; then
+                echo "$FAILED_EVENTS"
+              else
+                echo "Aucun événement CREATE_FAILED trouvé"
+                echo ""
+                echo "Recherche de tous les événements avec 'failed' ou 'error'..."
+                aws cloudformation describe-stack-events \
+                  --stack-name ${{ env.STACK_NAME }} \
+                  --region ${{ env.AWS_REGION }} \
+                  --max-items 50 \
+                  --query "StackEvents[?contains(ResourceStatusReason, 'failed') || contains(ResourceStatusReason, 'Failed') || contains(ResourceStatusReason, 'error') || contains(ResourceStatusReason, 'Error') || contains(ResourceStatusReason, 'already exists')].[Timestamp,LogicalResourceId,ResourceStatus,ResourceStatusReason]" \
+                  --output table 2>/dev/null || echo "Impossible de récupérer les événements"
+              fi
               
               echo ""
               echo "📋 Tous les événements récents:"
