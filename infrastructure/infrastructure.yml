@@ -408,87 +408,33 @@ Resources:
         - !Ref AlertTopic
 
   # ==================== CLOUDWATCH DASHBOARD ====================
+  # Note: Dashboard simplifié - les métriques avec dimensions nécessitent un format spécial
+  # Pour l'instant, créons un dashboard basique qui sera enrichi après le déploiement
   TodoAppDashboard:
     Type: AWS::CloudWatch::Dashboard
     Properties:
       DashboardName: !Sub ${EnvironmentName}-todo-app-dashboard
-      DashboardBody: !Sub 
-        - |
-          {
-            "widgets": [
-              {
-                "type": "metric",
-                "x": 0,
-                "y": 0,
-                "width": 12,
-                "height": 6,
-                "properties": {
-                  "metrics": [
-                    ["AWS/EC2", "CPUUtilization", {"InstanceId": "${WebServerId}"}],
-                    ["AWS/EC2", "CPUUtilization", {"InstanceId": "${DatabaseId}"}]
-                  ],
-                  "period": 300,
-                  "stat": "Average",
-                  "region": "${AWSRegion}",
-                  "title": "CPU Utilization (%)"
-                }
-              },
-              {
-                "type": "metric",
-                "x": 12,
-                "y": 0,
-                "width": 12,
-                "height": 6,
-                "properties": {
-                  "metrics": [
-                    ["AWS/EC2", "NetworkIn", {"InstanceId": "${WebServerId}"}],
-                    ["AWS/EC2", "NetworkOut", {"InstanceId": "${WebServerId}"}]
-                  ],
-                  "period": 300,
-                  "stat": "Sum",
-                  "region": "${AWSRegion}",
-                  "title": "WebServer Network Traffic (Bytes)"
-                }
-              },
-              {
-                "type": "metric",
-                "x": 0,
-                "y": 6,
-                "width": 12,
-                "height": 6,
-                "properties": {
-                  "metrics": [
-                    ["AWS/EC2", "NetworkIn", {"InstanceId": "${DatabaseId}"}],
-                    ["AWS/EC2", "NetworkOut", {"InstanceId": "${DatabaseId}"}]
-                  ],
-                  "period": 300,
-                  "stat": "Sum",
-                  "region": "${AWSRegion}",
-                  "title": "Database Network Traffic (Bytes)"
-                }
-              },
-              {
-                "type": "metric",
-                "x": 12,
-                "y": 6,
-                "width": 12,
-                "height": 6,
-                "properties": {
-                  "metrics": [
-                    ["AWS/EC2", "StatusCheckFailed", {"InstanceId": "${WebServerId}"}],
-                    ["AWS/EC2", "StatusCheckFailed", {"InstanceId": "${DatabaseId}"}]
-                  ],
-                  "period": 60,
-                  "stat": "Maximum",
-                  "region": "${AWSRegion}",
-                  "title": "Status Check Failed"
-                }
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/EC2", "CPUUtilization"]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "EC2 CPU Utilization - All Instances"
               }
-            ]
-          }
-        - WebServerId: !Ref WebServerInstance
-          DatabaseId: !Ref DatabaseInstance
-          AWSRegion: !Ref AWS::Region
+            }
+          ]
+        }
 
 Outputs:
   VPCId:
