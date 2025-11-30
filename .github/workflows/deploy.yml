@@ -138,7 +138,14 @@ jobs:
 
       - name: Deploy CloudFormation stack
         run: |
-          aws cloudformation deploy \
+          echo "🚀 Déploiement de la stack CloudFormation..."
+          echo "Stack: ${{ env.STACK_NAME }}"
+          echo "Région: ${{ env.AWS_REGION }}"
+          echo "Key Pair: ${{ secrets.EC2_KEY_PAIR_NAME }}"
+          echo ""
+          
+          # Tenter le déploiement
+          if ! aws cloudformation deploy \
             --template-file infrastructure/infrastructure.yml \
             --stack-name ${{ env.STACK_NAME }} \
             --parameter-overrides \
@@ -146,7 +153,50 @@ jobs:
               KeyPairName=${{ secrets.EC2_KEY_PAIR_NAME }} \
               AlertEmail=${{ secrets.ALERT_EMAIL }} \
             --capabilities CAPABILITY_IAM \
-            --no-fail-on-empty-changeset
+            --no-fail-on-empty-changeset; then
+            
+            echo ""
+            echo "❌ Échec du déploiement CloudFormation"
+            echo "======================================"
+            echo ""
+            
+            # Afficher les événements récents
+            echo "📋 Événements récents de la stack:"
+            aws cloudformation describe-stack-events \
+              --stack-name ${{ env.STACK_NAME }} \
+              --region ${{ env.AWS_REGION }} \
+              --max-items 5 \
+              --query "StackEvents[*].[Timestamp,ResourceStatus,LogicalResourceId,ResourceStatusReason]" \
+              --output table || echo "Impossible de récupérer les événements"
+            
+            echo ""
+            echo "🔍 Recherche de changementsets en échec..."
+            CHANGESET_ID=$(aws cloudformation list-change-sets \
+              --stack-name ${{ env.STACK_NAME }} \
+              --region ${{ env.AWS_REGION }} \
+              --query "Summaries[?Status=='FAILED'] | [0].ChangeSetId" \
+              --output text 2>/dev/null || echo "")
+            
+            if [ -n "$CHANGESET_ID" ] && [ "$CHANGESET_ID" != "None" ]; then
+              echo "📋 Raison de l'échec du changeset:"
+              aws cloudformation describe-change-set \
+                --change-set-name "$CHANGESET_ID" \
+                --stack-name ${{ env.STACK_NAME }} \
+                --region ${{ env.AWS_REGION }} \
+                --query "StatusReason" \
+                --output text || echo "Impossible de récupérer la raison"
+            fi
+            
+            echo ""
+            echo "💡 Vérifications à faire:"
+            echo "  1. Vérifiez que la Key Pair '${{ secrets.EC2_KEY_PAIR_NAME }}' existe dans ${{ env.AWS_REGION }}"
+            echo "  2. Vérifiez les permissions IAM de votre utilisateur AWS"
+            echo "  3. Vérifiez que l'AMI ID dans le template existe dans ${{ env.AWS_REGION }}"
+            
+            exit 1
+          fi
+          
+          echo "✅ Stack déployée avec succès"
 
       - name: Get stack outputs
         id: get-outputs
