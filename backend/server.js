@@ -71,8 +71,8 @@ pool.connect()
 
 // ==================== ROUTES ====================
 
-// Route racine
-app.get('/', (req, res) => {
+// Route de documentation API (déplacée vers /api pour permettre le frontend sur /)
+app.get('/api', (req, res) => {
     res.json({
         message: '🎉 Bienvenue sur l\'API Todo App!',
         version: '1.0.0',
@@ -410,6 +410,7 @@ app.get('/api/todos/stats', async (req, res) => {
 
 // ==================== SERVIR LE FRONTEND (PRODUCTION) ====================
 // Servir les fichiers statiques du frontend React en production
+// IMPORTANT: Ce middleware doit être placé APRÈS toutes les routes API
 const fs = require('fs');
 const frontendBuildPath = path.join(__dirname, '../frontend/build');
 if (process.env.NODE_ENV === 'production' && fs.existsSync(frontendBuildPath)) {
@@ -417,13 +418,19 @@ if (process.env.NODE_ENV === 'production' && fs.existsSync(frontendBuildPath)) {
     app.use(express.static(frontendBuildPath));
     
     // Pour toutes les routes non-API, servir index.html (pour React Router)
-    // Utiliser une fonction middleware au lieu d'une route catch-all
+    // Cette route catch-all doit être la dernière
     app.use((req, res, next) => {
         // Ne pas intercepter les routes API ou health
         if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
             return next();
         }
-        // Si le fichier n'existe pas, servir index.html (pour React Router)
+        // Vérifier si c'est une requête pour un fichier statique
+        const ext = req.path.split('.').pop();
+        const staticExtensions = ['js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'json', 'woff', 'woff2', 'ttf', 'eot', 'map'];
+        if (staticExtensions.includes(ext)) {
+            return next();
+        }
+        // Sinon, servir index.html pour React Router
         res.sendFile(path.join(frontendBuildPath, 'index.html'), (err) => {
             if (err) {
                 next(err);
