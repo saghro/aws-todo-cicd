@@ -423,8 +423,9 @@ app.use((req, res) => {
 
 // ==================== SERVIR LE FRONTEND (PRODUCTION) ====================
 // Servir les fichiers statiques du frontend React en production
+const fs = require('fs');
 const frontendBuildPath = path.join(__dirname, '../frontend/build');
-if (process.env.NODE_ENV === 'production' && require('fs').existsSync(frontendBuildPath)) {
+if (process.env.NODE_ENV === 'production' && fs.existsSync(frontendBuildPath)) {
     // Servir les fichiers statiques du frontend
     app.use(express.static(frontendBuildPath));
     

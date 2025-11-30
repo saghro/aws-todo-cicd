@@ -861,13 +861,26 @@ jobs:
             tar -xzf /tmp/backend.tar.gz
             rm /tmp/backend.tar.gz
             
-            # Déplacer le frontend build au bon endroit
-            if [ -d "frontend" ]; then
+            # Déplacer le frontend build au bon endroit (relatif à /home/ec2-user/app)
+            if [ -d "../frontend/frontend" ]; then
+              echo "📦 Déplacement du frontend build..."
+              mkdir -p ../frontend/build
+              mv ../frontend/frontend/* ../frontend/build/ 2>/dev/null || true
+              rm -rf ../frontend/frontend
+              echo "✅ Frontend déployé dans ../frontend/build/"
+            elif [ -d "frontend" ]; then
               echo "📦 Déplacement du frontend build..."
               mkdir -p ../frontend/build
               mv frontend/* ../frontend/build/ 2>/dev/null || true
               rmdir frontend 2>/dev/null || true
               echo "✅ Frontend déployé dans ../frontend/build/"
+            fi
+            
+            # Vérifier que le frontend est présent
+            if [ -d "../frontend/build" ]; then
+              echo "✅ Frontend trouvé: $(ls -la ../frontend/build/ | head -5)"
+            else
+              echo "⚠️  Frontend build non trouvé, l'API sera disponible sans interface web"
             fi
             
             # Installer Node.js avec NVM (plus fiable sur Amazon Linux 2)
