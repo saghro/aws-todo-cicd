@@ -592,6 +592,32 @@ jobs:
           fi
           echo "✅ Script copié sur le WebServer"
           
+          # Copier la clé SSH sur le WebServer pour qu'il puisse se connecter à la Database
+          echo "1.5️⃣  Configuration de la clé SSH sur le WebServer..."
+          ssh -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=30 \
+            -i ~/.ssh/id_rsa \
+            ec2-user@$WEBSERVER_IP << 'SSH_SETUP'
+            mkdir -p ~/.ssh
+            chmod 700 ~/.ssh
+          SSH_SETUP
+          
+          # Copier la clé SSH
+          scp -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=30 \
+            -i ~/.ssh/id_rsa \
+            ~/.ssh/id_rsa \
+            ec2-user@$WEBSERVER_IP:~/.ssh/id_rsa
+          
+          # Configurer les permissions de la clé sur le WebServer et ajouter la Database aux known_hosts
+          ssh -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=30 \
+            -i ~/.ssh/id_rsa \
+            ec2-user@$WEBSERVER_IP \
+            "chmod 600 ~/.ssh/id_rsa && ssh-keyscan -H $DATABASE_IP >> ~/.ssh/known_hosts 2>/dev/null || true && chmod 644 ~/.ssh/known_hosts"
+          
+          echo "✅ Clé SSH configurée sur le WebServer"
+          
           # Copier le script sur la DB via le WebServer
           echo "2️⃣  Copie du script sur la Database via le WebServer..."
           if ! ssh -o StrictHostKeyChecking=no \
@@ -600,7 +626,9 @@ jobs:
             ec2-user@$WEBSERVER_IP \
             "scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa /tmp/init.sql ec2-user@$DATABASE_IP:/tmp/init.sql"; then
             echo "❌ ERREUR: Impossible de copier le script sur la Database"
-            echo "Vérifiez que le WebServer peut se connecter à la Database via SSH"
+            echo "Vérifiez que:"
+            echo "  1. Le Security Group de la Database autorise les connexions SSH depuis le WebServer"
+            echo "  2. La clé SSH est correctement configurée sur le WebServer"
             exit 1
           fi
           echo "✅ Script copié sur la Database"
